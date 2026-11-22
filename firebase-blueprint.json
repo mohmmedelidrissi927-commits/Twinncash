@@ -1,0 +1,289 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "TwinCash user profile for admin, merchant, or customer accounts.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "whatsapp": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "merchant", "customer"] },
+        "status": { "type": "string", "enum": ["active", "pending_approval", "closed"] },
+        "balance": { "type": "number" },
+        "loyaltyCount": { "type": "integer" },
+        "commissionType": { "type": "string", "enum": ["percentage", "fixed"] },
+        "commissionValue": { "type": "number" },
+        "avatarUri": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Client submits FieldValue.serverTimestamp()" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Client submits FieldValue.serverTimestamp()" }
+      },
+      "required": ["uid", "fullName", "email", "whatsapp", "role", "status", "balance", "loyaltyCount", "commissionType", "commissionValue", "createdAt", "updatedAt"]
+    },
+    "WhatsappIndex": {
+      "title": "WhatsappIndex",
+      "description": "Unique WhatsApp reservation mapping to prevent duplicate accounts per number.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "createdAt"]
+    },
+    "MerchantInvite": {
+      "title": "MerchantInvite",
+      "description": "Admin-created merchant authorization & commission record keyed by lowercase email.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "fullName": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "role": { "type": "string", "enum": ["merchant"] },
+        "status": { "type": "string", "enum": ["pending_approval", "active", "closed"] },
+        "commissionType": { "type": "string", "enum": ["percentage", "fixed"] },
+        "commissionValue": { "type": "number" },
+        "claimedUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "fullName", "whatsapp", "role", "status", "commissionType", "commissionValue", "createdAt", "updatedAt"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "Public top-up or digital card service with native package maps (supplier costs omitted).",
+      "type": "object",
+      "properties": {
+        "category": { "type": "string", "enum": ["ROBUX", "FREE_FIRE", "PUBG", "STEAM", "PLAYSTATION", "XBOX"] },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "packages": { "type": "array", "description": "Bounded list of {id, label, quantityLabel, sellPrice}" },
+        "available": { "type": "boolean" },
+        "displayOrder": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["category", "name", "description", "packages", "available", "displayOrder", "createdAt", "updatedAt"]
+    },
+    "ServiceCost": {
+      "title": "ServiceCost",
+      "description": "Admin-only supplier cost map keyed by packageId.",
+      "type": "object",
+      "properties": {
+        "costs": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["costs", "updatedAt"]
+    },
+    "Offer": {
+      "title": "Offer",
+      "description": "Free Fire special promotional offer.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "serviceCategory": { "type": "string", "enum": ["FREE_FIRE"] },
+        "expiresAt": { "type": "integer" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "price", "originalPrice", "serviceCategory", "expiresAt", "active", "createdAt", "updatedAt"]
+    },
+    "DiscountCode": {
+      "title": "DiscountCode",
+      "description": "Public or customer-specific discount code.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "discountType": { "type": "string", "enum": ["percentage", "fixed"] },
+        "discountValue": { "type": "number" },
+        "includedCategories": { "type": "array" },
+        "expiresAt": { "type": "integer" },
+        "maxUses": { "type": "integer" },
+        "usedCount": { "type": "integer" },
+        "publicCode": { "type": "boolean" },
+        "targetCustomerId": { "type": "string" },
+        "targetCustomerName": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "discountType", "discountValue", "includedCategories", "expiresAt", "maxUses", "usedCount", "publicCode", "active", "createdAt", "updatedAt"]
+    },
+    "Contest": {
+      "title": "Contest",
+      "description": "Customer contest managed by admin.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "prizeType": { "type": "string", "enum": ["balance", "free_topup", "discount_code"] },
+        "prizeLabel": { "type": "string" },
+        "prizeAmount": { "type": "number" },
+        "rulesText": { "type": "string" },
+        "startsAt": { "type": "integer" },
+        "endsAt": { "type": "integer" },
+        "status": { "type": "string", "enum": ["active", "ended", "winner_selected"] },
+        "winnerCustomerId": { "type": "string" },
+        "winnerCustomerName": { "type": "string" },
+        "prizeApproved": { "type": "boolean" },
+        "winnerNotified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "prizeType", "prizeLabel", "prizeAmount", "rulesText", "startsAt", "endsAt", "status", "prizeApproved", "winnerNotified", "createdAt", "updatedAt"]
+    },
+    "ContestEntry": {
+      "title": "ContestEntry",
+      "description": "Single customer entry per contest ({contestId}_{customerId}).",
+      "type": "object",
+      "properties": {
+        "contestId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerWhatsapp": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["contestId", "customerId", "customerName", "customerWhatsapp", "createdAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer top-up or offer order (supplier costs isolated).",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerWhatsapp": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "merchantName": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "serviceName": { "type": "string" },
+        "serviceCategory": { "type": "string" },
+        "packageId": { "type": "string" },
+        "packageLabel": { "type": "string" },
+        "playerAccountInfo": { "type": "string" },
+        "note": { "type": "string" },
+        "offerOrder": { "type": "boolean" },
+        "discountCodeUsed": { "type": "string" },
+        "originalPrice": { "type": "number" },
+        "discountApplied": { "type": "number" },
+        "finalPrice": { "type": "number" },
+        "merchantCommission": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected", "completed"] },
+        "rejectionReason": { "type": "string" },
+        "customerNotified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerId", "customerName", "customerWhatsapp", "serviceId", "serviceName", "serviceCategory", "packageId", "packageLabel", "playerAccountInfo", "note", "offerOrder", "originalPrice", "discountApplied", "finalPrice", "merchantCommission", "status", "customerNotified", "createdAt", "updatedAt"]
+    },
+    "TopUp": {
+      "title": "TopUp",
+      "description": "Customer wallet top-up request.",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerWhatsapp": { "type": "string" },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "transactionRef": { "type": "string" },
+        "proofImageUri": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+        "rejectionReason": { "type": "string" },
+        "reviewedBy": { "type": "string" },
+        "customerNotified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerId", "customerName", "customerWhatsapp", "amount", "paymentMethod", "transactionRef", "status", "customerNotified", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable admin & merchant audit trail.",
+      "type": "object",
+      "properties": {
+        "actorId": { "type": "string" },
+        "actorName": { "type": "string" },
+        "actorRole": { "type": "string" },
+        "actionType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["actorId", "actorName", "actorRole", "actionType", "targetId", "details", "createdAt"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global TwinCash configuration stored at /settings/global.",
+      "type": "object",
+      "properties": {
+        "agencyPhone": { "type": "string" },
+        "whatsappNumber": { "type": "string" },
+        "loyaltyThreshold": { "type": "integer" },
+        "loyaltyDiscountPercent": { "type": "number" },
+        "adminEmail": { "type": "string", "format": "email" },
+        "agencyBalance": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["agencyPhone", "whatsappNumber", "loyaltyThreshold", "loyaltyDiscountPercent", "adminEmail", "agencyBalance", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles (owner and admin read/write isolated)"
+    },
+    "/whatsapp_index/{whatsapp}": {
+      "schema": { "$ref": "#/entities/WhatsappIndex" },
+      "description": "Unique WhatsApp reservation index"
+    },
+    "/merchant_invites/{emailKey}": {
+      "schema": { "$ref": "#/entities/MerchantInvite" },
+      "description": "Admin merchant invitations & approvals keyed by lowercase email"
+    },
+    "/services/{serviceId}": {
+      "schema": { "$ref": "#/entities/Service" },
+      "description": "Services catalog without supplier cost"
+    },
+    "/service_costs/{serviceId}": {
+      "schema": { "$ref": "#/entities/ServiceCost" },
+      "description": "Admin-only supplier cost lookup per service"
+    },
+    "/offers/{offerId}": {
+      "schema": { "$ref": "#/entities/Offer" },
+      "description": "Free Fire promotional offers"
+    },
+    "/discountCodes/{codeId}": {
+      "schema": { "$ref": "#/entities/DiscountCode" },
+      "description": "Public or customer-targeted discount codes"
+    },
+    "/contests/{contestId}": {
+      "schema": { "$ref": "#/entities/Contest" },
+      "description": "Promotional contests"
+    },
+    "/contestEntries/{entryId}": {
+      "schema": { "$ref": "#/entities/ContestEntry" },
+      "description": "Customer contest participation records"
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Service and offer orders"
+    },
+    "/topups/{topupId}": {
+      "schema": { "$ref": "#/entities/TopUp" },
+      "description": "Wallet top-up requests"
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable activity logs"
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/Settings" },
+      "description": "Global agency settings document"
+    }
+  }
+}

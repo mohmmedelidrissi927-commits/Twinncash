@@ -1,0 +1,623 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: deny everything not explicitly matched below
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidPhoneKey(phone) {
+      return phone is string && phone.size() >= 8 && phone.size() <= 24 && phone.matches('^[0-9+]+$');
+    }
+
+    function isValidEmailKey(email) {
+      return email is string && email.size() >= 5 && email.size() <= 160 && email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$');
+    }
+
+    // [FIX #1.7] التحقق من الأدمن عبر custom claim admin == true مع fallback مؤقت للبريد الموثّق
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.get('admin', false) == true
+        || (request.auth.token.email == "m95169829@gmail.com"
+          && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function currentUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasUserDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isActiveMerchant() {
+      return hasUserDoc()
+        && currentUserDoc().role == "merchant"
+        && currentUserDoc().status == "active";
+    }
+
+    function isActiveCustomer() {
+      return hasUserDoc()
+        && currentUserDoc().role == "customer"
+        && currentUserDoc().status == "active";
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isValidUserDoc(data) {
+      return data.keys().hasAll([
+          'uid', 'fullName', 'email', 'whatsapp', 'role', 'status',
+          'balance', 'loyaltyCount', 'commissionType', 'commissionValue',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'fullName', 'email', 'whatsapp', 'role', 'status',
+          'balance', 'loyaltyCount', 'commissionType', 'commissionValue',
+          'avatarUri', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid.size() >= 3 && data.uid.size() <= 128
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 100
+        && data.email is string && data.email.size() >= 5 && data.email.size() <= 160
+        && isValidPhoneKey(data.whatsapp)
+        && data.role in ['admin', 'merchant', 'customer']
+        && data.status in ['active', 'pending_approval', 'closed']
+        && data.balance is number && data.balance >= 0
+        && data.loyaltyCount is int && data.loyaltyCount >= 0 && data.loyaltyCount <= 100
+        && data.commissionType in ['percentage', 'fixed']
+        && data.commissionValue is number && data.commissionValue >= 0
+        && (!('avatarUri' in data) || data.avatarUri == null || (data.avatarUri is string && data.avatarUri.size() <= 1000))
+        && isValidTimestamp(data.createdAt)
+        && isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidWhatsappIndex(data) {
+      return data.keys().hasAll(['uid', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'createdAt'])
+        && data.uid is string && data.uid.size() >= 3 && data.uid.size() <= 128
+        && isValidTimestamp(data.createdAt);
+    }
+
+    function isValidMerchantInvite(data) {
+      return data.keys().hasAll([
+          'email', 'fullName', 'whatsapp', 'role', 'status',
+          'commissionType', 'commissionValue', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'email', 'fullName', 'whatsapp', 'role', 'status',
+          'commissionType', 'commissionValue', 'claimedUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidEmailKey(data.email)
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 100
+        && isValidPhoneKey(data.whatsapp)
+        && data.role == 'merchant'
+        && data.status in ['pending_approval', 'active', 'closed']
+        && data.commissionType in ['percentage', 'fixed']
+        && data.commissionValue is number && data.commissionValue >= 0
+        && (!('claimedUid' in data) || data.claimedUid == null || (data.claimedUid is string && data.claimedUid.size() <= 128))
+        && isValidTimestamp(data.createdAt)
+        && isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidService(data) {
+      return data.keys().hasAll([
+          'category', 'name', 'description', 'packages', 'available',
+          'displayOrder', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'category', 'name', 'description', 'packages', 'available',
+          'displayOrder', 'createdAt', 'updatedAt'
+        ])
+        && data.category in ['ROBUX', 'FREE_FIRE', 'PUBG', 'STEAM', 'PLAYSTATION', 'XBOX']
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.description is string && data.description.size() <= 400
+        && data.packages is list && data.packages.size() <= 40
+        && (data.packages.size() == 0 || (
+          data.packages[0] is map
+          && data.packages[0].keys().hasOnly(['id', 'label', 'quantityLabel', 'sellPrice'])
+        ))
+        && data.available is bool
+        && data.displayOrder is int && data.displayOrder >= 0 && data.displayOrder <= 1000
+        && isValidTimestamp(data.createdAt)
+        && isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidServiceCost(data) {
+      return data.keys().hasAll(['costs', 'updatedAt'])
+        && data.keys().hasOnly(['costs', 'updatedAt'])
+        && data.costs is map
+        && isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidOffer(data) {
+      return data.keys().hasAll([
+          'title', 'description', 'price', 'originalPrice', 'serviceCategory',
+          'expiresAt', 'active', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'title', 'description', 'price', 'originalPrice', 'serviceCategory',
+          'expiresAt', 'active', 'createdAt', 'updatedAt'
+        ])
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 140
+        && data.description is string && data.description.size() <= 400
+        && data.price is number && data.price > 0
+        && data.originalPrice is number && data.originalPrice >= data.price
+        && data.serviceCategory == 'FREE_FIRE'
+        && data.expiresAt is int && data.expiresAt > 0
+        && data.active is bool
+        && isValidTimestamp(data.createdAt)
+        && isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidDiscountCode(data) {
+      return data.keys().hasAll([
+          'code', 'discountType', 'discountValue', 'includedCategories',
+          'expiresAt', 'maxUses', 'usedCount', 'publicCode', 'active',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'code', 'discountType', 'discountValue', 'includedCategories',
+          'expiresAt', 'maxUses', 'usedCount', 'publicCode',
+          'targetCustomerId', 'targetCustomerName', 'active',
+          'createdAt', 'updatedAt'
+        ])
+        && data.code is string && data.code.size() >= 3 && data.code.size() <= 32
+        && data.discountType in ['percentage', 'fixed']
+        && data.discountValue is number && data.discountValue > 0
+        && data.includedCategories is list && data.includedCategories.size() >= 1 && data.includedCategories.size() <= 10
+        && (data.includedCategories[0] is string)
+        && data.expiresAt is int && data.expiresAt > 0
+        && data.maxUses is int && data.maxUses >= 1
+        && data.usedCount is int && data.usedCount >= 0 && data.usedCount <= data.maxUses
+        && data.publicCode is bool
+        && (!('targetCustomerId' in data) || data.targetCustomerId == null || (data.targetCustomerId is string && data.targetCustomerId.size() <= 128))
+        && (!('targetCustomerName' in data) || data.targetCustomerName == null || (data.targetCustomerName is string && data.targetCustomerName.size() <= 100))
+        && data.active is bool
+        && isValidTimestamp(data.createdAt)
+        && isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidContest(data) {
+      return data.keys().hasAll([
+          'title', 'description', 'prizeType', 'prizeLabel', 'prizeAmount',
+          'rulesText', 'startsAt', 'endsAt', 'status', 'prizeApproved',
+          'winnerNotified', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'title', 'description', 'prizeType', 'prizeLabel', 'prizeAmount',
+          'rulesText', 'startsAt', 'endsAt', 'status', 'winnerCustomerId',
+          'winnerCustomerName', 'prizeApproved', 'winnerNotified', 'createdAt', 'updatedAt'
+        ])
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 140
+        && data.description is string && data.description.size() <= 500
+        && data.prizeType in ['balance', 'free_topup', 'discount_code']
+        && data.prizeLabel is string && data.prizeLabel.size() >= 1 && data.prizeLabel.size() <= 120
+        && data.prizeAmount is number && data.prizeAmount >= 0
+        && data.rulesText is string && data.rulesText.size() <= 500
+        && data.startsAt is int && data.endsAt is int && data.endsAt >= data.startsAt
+        && data.status in ['active', 'ended', 'winner_selected']
+        && (!('winnerCustomerId' in data) || data.winnerCustomerId == null || (data.winnerCustomerId is string && data.winnerCustomerId.size() <= 128))
+        && (!('winnerCustomerName' in data) || data.winnerCustomerName == null || (data.winnerCustomerName is string && data.winnerCustomerName.size() <= 100))
+        && data.prizeApproved is bool
+        && data.winnerNotified is bool
+        && isValidTimestamp(data.createdAt)
+        && isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidContestEntry(data) {
+      return data.keys().hasAll(['contestId', 'customerId', 'customerName', 'customerWhatsapp', 'createdAt'])
+        && data.keys().hasOnly(['contestId', 'customerId', 'customerName', 'customerWhatsapp', 'createdAt'])
+        && data.contestId is string && data.contestId.size() >= 1 && data.contestId.size() <= 128
+        && data.customerId is string && data.customerId.size() >= 3 && data.customerId.size() <= 128
+        && data.customerName is string && data.customerName.size() >= 2 && data.customerName.size() <= 100
+        && isValidPhoneKey(data.customerWhatsapp)
+        && isValidTimestamp(data.createdAt);
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll([
+          'customerId', 'customerName', 'customerWhatsapp', 'serviceId',
+          'serviceName', 'serviceCategory', 'packageId', 'packageLabel',
+          'playerAccountInfo', 'note', 'offerOrder', 'originalPrice',
+          'discountApplied', 'finalPrice', 'merchantCommission', 'status',
+          'customerNotified', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'customerId', 'customerName', 'customerWhatsapp', 'merchantId', 'merchantName',
+          'serviceId', 'serviceName', 'serviceCategory', 'packageId', 'packageLabel',
+          'playerAccountInfo', 'note', 'offerOrder', 'discountCodeUsed', 'originalPrice',
+          'discountApplied', 'finalPrice', 'supplierCost', 'merchantCommission', 'netProfit',
+          'status', 'rejectionReason', 'customerNotified', 'createdAt', 'updatedAt'
+        ])
+        && data.customerId is string && data.customerId.size() >= 3 && data.customerId.size() <= 128
+        && data.customerName is string && data.customerName.size() >= 2 && data.customerName.size() <= 100
+        && isValidPhoneKey(data.customerWhatsapp)
+        && (!('merchantId' in data) || data.merchantId == null || (data.merchantId is string && data.merchantId.size() <= 128))
+        && (!('merchantName' in data) || data.merchantName == null || (data.merchantName is string && data.merchantName.size() <= 100))
+        && data.serviceId is string && data.serviceId.size() >= 1 && data.serviceId.size() <= 128
+        && data.serviceName is string && data.serviceName.size() >= 1 && data.serviceName.size() <= 120
+        && data.serviceCategory is string && data.serviceCategory.size() >= 1 && data.serviceCategory.size() <= 40
+        && data.packageId is string && data.packageId.size() >= 1 && data.packageId.size() <= 128
+        && data.packageLabel is string && data.packageLabel.size() >= 1 && data.packageLabel.size() <= 140
+        && data.playerAccountInfo is string && data.playerAccountInfo.size() >= 1 && data.playerAccountInfo.size() <= 200
+        && data.note is string && data.note.size() <= 400
+        && data.offerOrder is bool
+        && (!('discountCodeUsed' in data) || data.discountCodeUsed == null || (data.discountCodeUsed is string && data.discountCodeUsed.size() <= 32))
+        && data.originalPrice is number && data.originalPrice >= 0
+        && data.discountApplied is number && data.discountApplied >= 0
+        && data.finalPrice is number && data.finalPrice >= 0
+        && (!('supplierCost' in data) || (data.supplierCost is number && data.supplierCost >= 0))
+        && data.merchantCommission is number && data.merchantCommission >= 0
+        && (!('netProfit' in data) || data.netProfit is number)
+        && data.status in ['pending', 'accepted', 'rejected', 'completed']
+        && (!('rejectionReason' in data) || data.rejectionReason == null || (data.rejectionReason is string && data.rejectionReason.size() <= 300))
+        && data.customerNotified is bool
+        && isValidTimestamp(data.createdAt)
+        && isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidTopUp(data) {
+      return data.keys().hasAll([
+          'customerId', 'customerName', 'customerWhatsapp', 'amount',
+          'paymentMethod', 'transactionRef', 'status', 'customerNotified',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'customerId', 'customerName', 'customerWhatsapp', 'amount',
+          'paymentMethod', 'transactionRef', 'proofImageUri', 'status',
+          'rejectionReason', 'reviewedBy', 'customerNotified', 'createdAt', 'updatedAt'
+        ])
+        && data.customerId is string && data.customerId.size() >= 3 && data.customerId.size() <= 128
+        && data.customerName is string && data.customerName.size() >= 2 && data.customerName.size() <= 100
+        && isValidPhoneKey(data.customerWhatsapp)
+        && data.amount is number && data.amount > 0 && data.amount <= 100000
+        && data.paymentMethod is string && data.paymentMethod.size() >= 2 && data.paymentMethod.size() <= 80
+        && data.transactionRef is string && data.transactionRef.size() >= 1 && data.transactionRef.size() <= 160
+        && (!('proofImageUri' in data) || data.proofImageUri == null || (data.proofImageUri is string && data.proofImageUri.size() <= 1000))
+        && data.status in ['pending', 'accepted', 'rejected']
+        && (!('rejectionReason' in data) || data.rejectionReason == null || (data.rejectionReason is string && data.rejectionReason.size() <= 300))
+        && (!('reviewedBy' in data) || data.reviewedBy == null || (data.reviewedBy is string && data.reviewedBy.size() <= 100))
+        && data.customerNotified is bool
+        && isValidTimestamp(data.createdAt)
+        && isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['actorId', 'actorName', 'actorRole', 'actionType', 'targetId', 'details', 'createdAt'])
+        && data.keys().hasOnly(['actorId', 'actorName', 'actorRole', 'actionType', 'targetId', 'details', 'createdAt'])
+        && data.actorId is string && data.actorId.size() >= 3 && data.actorId.size() <= 128
+        && data.actorName is string && data.actorName.size() >= 2 && data.actorName.size() <= 100
+        && data.actorRole in ['admin', 'merchant']
+        && data.actionType is string && data.actionType.size() >= 1 && data.actionType.size() <= 80
+        && data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 128
+        && data.details is string && data.details.size() <= 400
+        && isValidTimestamp(data.createdAt);
+    }
+
+    function isValidSettings(data) {
+      return data.keys().hasAll([
+          'agencyPhone', 'whatsappNumber', 'loyaltyThreshold',
+          'loyaltyDiscountPercent', 'adminEmail', 'agencyBalance', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'agencyPhone', 'whatsappNumber', 'loyaltyThreshold',
+          'loyaltyDiscountPercent', 'adminEmail', 'agencyBalance', 'updatedAt'
+        ])
+        && data.agencyPhone is string && data.agencyPhone.size() >= 6 && data.agencyPhone.size() <= 30
+        && data.whatsappNumber is string && data.whatsappNumber.size() >= 6 && data.whatsappNumber.size() <= 30
+        && data.loyaltyThreshold is int && data.loyaltyThreshold >= 1 && data.loyaltyThreshold <= 20
+        && data.loyaltyDiscountPercent is number && data.loyaltyDiscountPercent >= 1 && data.loyaltyDiscountPercent <= 100
+        && data.adminEmail == "m95169829@gmail.com"
+        && data.agencyBalance is number && data.agencyBalance >= 0
+        && isValidTimestamp(data.updatedAt);
+    }
+
+    // 1. Users Collection
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (isAdmin() || isOwner(userId));
+      allow list: if isAdmin();
+
+      allow create: if isSignedIn()
+        && isValidId(userId)
+        && isValidUserDoc(incoming())
+        && (
+          // Single Admin self-registration
+          (isAdmin()
+            && isOwner(userId)
+            && incoming().uid == request.auth.uid
+            && incoming().email == request.auth.token.email
+            && incoming().role == "admin"
+            && incoming().status == "active"
+            && incoming().balance == 0
+            && incoming().loyaltyCount == 0
+            && existsAfter(/databases/$(database)/documents/whatsapp_index/$(incoming().whatsapp)))
+          ||
+          // Invited Merchant claiming account on first Google Sign-In
+          (isOwner(userId)
+            && request.auth.token.email_verified == true
+            && incoming().uid == request.auth.uid
+            && incoming().email == request.auth.token.email
+            && incoming().role == "merchant"
+            && incoming().balance == 0
+            && exists(/databases/$(database)/documents/merchant_invites/$(request.auth.token.email))
+            && get(/databases/$(database)/documents/merchant_invites/$(request.auth.token.email)).data.status == incoming().status
+            && existsAfter(/databases/$(database)/documents/whatsapp_index/$(incoming().whatsapp)))
+          ||
+          // Regular Customer self-registration (strictly forced role == "customer")
+          (isOwner(userId)
+            && incoming().uid == request.auth.uid
+            && incoming().email == request.auth.token.email
+            && incoming().role == "customer"
+            && incoming().status == "active"
+            && incoming().balance == 0
+            && incoming().loyaltyCount == 0
+            && incoming().commissionValue == 0
+            && existsAfter(/databases/$(database)/documents/whatsapp_index/$(incoming().whatsapp)))
+        );
+
+      allow update: if isSignedIn()
+        && isValidId(userId)
+        && isValidUserDoc(incoming())
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && (
+          // Tier 1: Admin management actions
+          (isAdmin() && incoming().role == existing().role)
+          ||
+          // Tier 2a: Owner profile edit (safe fields only; role/status/balance/loyalty locked)
+          (isOwner(userId)
+            && incoming().role == existing().role
+            && incoming().status == existing().status
+            && incoming().balance == existing().balance
+            && incoming().loyaltyCount == existing().loyaltyCount
+            && incoming().commissionType == existing().commissionType
+            && incoming().commissionValue == existing().commissionValue
+            && (incoming().whatsapp == existing().whatsapp
+              || existsAfter(/databases/$(database)/documents/whatsapp_index/$(incoming().whatsapp)))
+            && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'whatsapp', 'avatarUri', 'updatedAt']))
+          ||
+          // Tier 2b: Owner order payment deduction (balance strictly non-increasing)
+          (isOwner(userId)
+            && existing().status == "active"
+            && incoming().role == existing().role
+            && incoming().status == existing().status
+            && incoming().commissionType == existing().commissionType
+            && incoming().commissionValue == existing().commissionValue
+            && incoming().balance <= existing().balance
+            && (incoming().loyaltyCount == existing().loyaltyCount || incoming().loyaltyCount == 0)
+            && incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'loyaltyCount', 'updatedAt']))
+          ||
+          // Tier 3: Active Merchant order completion/rejection customer update (loyalty/refund only)
+          (isActiveMerchant()
+            && existing().role == "customer"
+            && incoming().role == existing().role
+            && incoming().status == existing().status
+            && incoming().commissionType == existing().commissionType
+            && incoming().commissionValue == existing().commissionValue
+            && incoming().balance >= existing().balance
+            && incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'loyaltyCount', 'updatedAt']))
+        );
+
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // 2. Unique WhatsApp Index
+    match /whatsapp_index/{whatsapp} {
+      allow get: if isSignedIn() && isValidPhoneKey(whatsapp) && (isAdmin() || existing().uid == request.auth.uid);
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidPhoneKey(whatsapp)
+        && isValidWhatsappIndex(incoming())
+        && incoming().uid == request.auth.uid
+        && !exists(/databases/$(database)/documents/whatsapp_index/$(whatsapp));
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidPhoneKey(whatsapp) && (isAdmin() || existing().uid == request.auth.uid);
+    }
+
+    // 3. Merchant Invites (Admin creates/approves; Merchant claims via verified Google email)
+    match /merchant_invites/{emailKey} {
+      allow get: if isSignedIn() && isValidEmailKey(emailKey)
+        && (isAdmin() || (request.auth.token.email == emailKey && request.auth.token.email_verified == true));
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidEmailKey(emailKey) && isValidMerchantInvite(incoming()) && incoming().email == emailKey;
+      allow update: if isSignedIn() && isValidEmailKey(emailKey) && isValidMerchantInvite(incoming())
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && (
+          isAdmin()
+          || (request.auth.token.email == emailKey
+            && request.auth.token.email_verified == true
+            && incoming().status == existing().status
+            && incoming().commissionType == existing().commissionType
+            && incoming().commissionValue == existing().commissionValue
+            && incoming().diff(existing()).affectedKeys().hasOnly(['claimedUid', 'updatedAt']))
+        );
+      allow delete: if isAdmin() && isValidEmailKey(emailKey);
+    }
+
+    // 4. Services Catalog (supplierCost completely excluded; Admin writes only)
+    match /services/{serviceId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin() && isValidId(serviceId) && isValidService(incoming());
+      allow update: if isAdmin() && isValidId(serviceId) && isValidService(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin() && isValidId(serviceId);
+    }
+
+    // [FIX #1.7] حماية تكاليف المورد للقراءة والكتابة من الأدمن فقط
+    match /service_costs/{docId} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() && isValidId(docId) && isValidServiceCost(incoming());
+      allow delete: if isAdmin() && isValidId(docId);
+    }
+
+    // 6. Free Fire Offers (Admin writes only)
+    match /offers/{offerId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin() && isValidId(offerId) && isValidOffer(incoming());
+      allow update: if isAdmin() && isValidId(offerId) && isValidOffer(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin() && isValidId(offerId);
+    }
+
+    // 7. Discount Codes
+    // [FIX #1.6] السماح للتاجر النشط بقراءة الكود وإنقاص usedCount بمقدار 1 فقط عند رفض طلب
+    match /discountCodes/{codeId} {
+      allow get: if isSignedIn() && isValidId(codeId)
+        && (isAdmin() || isActiveMerchant() || existing().publicCode == true || existing().targetCustomerId == request.auth.uid);
+      allow list: if isAdmin()
+        || isActiveMerchant()
+        || (isSignedIn() && existing().publicCode == true)
+        || (isSignedIn() && existing().targetCustomerId == request.auth.uid);
+      allow create: if isAdmin() && isValidId(codeId) && isValidDiscountCode(incoming());
+      allow update: if isSignedIn() && isValidId(codeId) && isValidDiscountCode(incoming())
+        && incoming().createdAt == existing().createdAt
+        && (
+          isAdmin()
+          || (isActiveCustomer()
+            && (existing().publicCode == true || existing().targetCustomerId == request.auth.uid)
+            && incoming().usedCount == existing().usedCount + 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['usedCount', 'updatedAt']))
+          || (isActiveMerchant()
+            && existing().usedCount > 0
+            && incoming().usedCount == existing().usedCount - 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['usedCount', 'updatedAt']))
+        );
+      allow delete: if isAdmin() && isValidId(codeId);
+    }
+
+    // 8. Contests & Contest Entries
+    match /contests/{contestId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin() && isValidId(contestId) && isValidContest(incoming());
+      allow update: if isSignedIn() && isValidId(contestId) && isValidContest(incoming())
+        && incoming().createdAt == existing().createdAt
+        && (
+          isAdmin()
+          || (existing().winnerCustomerId == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['winnerNotified', 'updatedAt']))
+        );
+      allow delete: if isAdmin() && isValidId(contestId);
+    }
+
+    match /contestEntries/{entryId} {
+      allow get: if isSignedIn() && isValidId(entryId) && (isAdmin() || existing().customerId == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && existing().customerId == request.auth.uid);
+      allow create: if isActiveCustomer()
+        && isValidId(entryId)
+        && isValidContestEntry(incoming())
+        && entryId == (incoming().contestId + "_" + request.auth.uid)
+        && incoming().customerId == request.auth.uid
+        && get(/databases/$(database)/documents/contests/$(incoming().contestId)).data.status == "active";
+      allow update, delete: if isAdmin();
+    }
+
+    // 9. Orders (Always created as "pending")
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && isValidId(orderId) && (
+        isAdmin()
+        || existing().customerId == request.auth.uid
+        || (isActiveMerchant() && (existing().status == "pending" || existing().merchantId == request.auth.uid))
+      );
+      allow list: if isAdmin()
+        || (isSignedIn() && existing().customerId == request.auth.uid)
+        || (isActiveMerchant() && existing().status == "pending")
+        || (isActiveMerchant() && existing().merchantId == request.auth.uid);
+
+      allow create: if isActiveCustomer()
+        && isValidId(orderId)
+        && isValidOrder(incoming())
+        && incoming().customerId == request.auth.uid
+        && incoming().status == "pending"
+        && incoming().merchantCommission == 0;
+
+      allow update: if isSignedIn()
+        && isValidId(orderId)
+        && isValidOrder(incoming())
+        && incoming().customerId == existing().customerId
+        && incoming().finalPrice == existing().finalPrice
+        && (!('supplierCost' in existing()) || incoming().supplierCost == existing().supplierCost)
+        && incoming().createdAt == existing().createdAt
+        && (
+          isAdmin()
+          || (isActiveMerchant()
+            && existing().status in ["pending", "accepted"]
+            && incoming().status in ["completed", "rejected"]
+            && incoming().merchantId == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'merchantId', 'merchantName', 'merchantCommission', 'netProfit',
+              'status', 'rejectionReason', 'customerNotified', 'updatedAt'
+            ]))
+          || (isOwner(existing().customerId)
+            && incoming().status == existing().status
+            && incoming().diff(existing()).affectedKeys().hasOnly(['customerNotified', 'updatedAt']))
+        );
+
+      allow delete: if false;
+    }
+
+    // 10. Top-Ups
+    match /topups/{topupId} {
+      allow get: if isSignedIn() && isValidId(topupId) && (isAdmin() || existing().customerId == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && existing().customerId == request.auth.uid);
+
+      allow create: if isActiveCustomer()
+        && isValidId(topupId)
+        && isValidTopUp(incoming())
+        && incoming().customerId == request.auth.uid
+        && incoming().status == "pending";
+
+      allow update: if isSignedIn()
+        && isValidId(topupId)
+        && isValidTopUp(incoming())
+        && incoming().customerId == existing().customerId
+        && incoming().amount == existing().amount
+        && incoming().createdAt == existing().createdAt
+        && (
+          (isAdmin() && existing().status == "pending" && incoming().status in ["accepted", "rejected"])
+          || (isOwner(existing().customerId)
+            && incoming().status == existing().status
+            && incoming().diff(existing()).affectedKeys().hasOnly(['customerNotified', 'updatedAt']))
+        );
+
+      allow delete: if false;
+    }
+
+    // 11. Immutable Audit Logs
+    match /auditLogs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isSignedIn()
+        && isValidId(logId)
+        && isValidAuditLog(incoming())
+        && (
+          (isAdmin() && incoming().actorId == request.auth.uid && incoming().actorRole == "admin")
+          || (isActiveMerchant() && incoming().actorId == request.auth.uid && incoming().actorRole == "merchant")
+        );
+      allow update, delete: if false;
+    }
+
+    // 12. Global Settings (Single document "global" — get only, no list)
+    match /settings/{settingId} {
+      allow get: if isSignedIn() && settingId == "global";
+      allow list: if false;
+      allow create, update: if isAdmin() && settingId == "global" && isValidSettings(incoming());
+      allow delete: if false;
+    }
+  }
+}
+// [REVIEWED 2026-11] إصلاحات شاملة
+

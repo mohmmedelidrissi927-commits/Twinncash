@@ -1,0 +1,6 @@
+{
+  "name": "TwinCash",
+  "description": "تطبيق TwinCash لبيع خدمات شحن الألعاب والبطاقات الرقمية مع لوحة تحكم للأدمن والتاجر والزبون",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
